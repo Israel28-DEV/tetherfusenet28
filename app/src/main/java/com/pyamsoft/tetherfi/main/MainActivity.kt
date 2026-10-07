@@ -81,17 +81,7 @@ class MainActivity : ComponentActivity() {
                   override val applicationIcon = R.mipmap.ic_launcher
 
                   override val changelog = buildChangeLog {
-                    //                    feature("Add unique Activities to turn the hotspot On or
-                    // Off.")
-                    bugfix("Fixed a bug preventing HTTP connections to Private IP addresses.")
-                    bugfix(
-                        "Fixed a bug where previously blocked devices would temporarily become unblocked."
-                    )
-                    bugfix("Fix bad HTTP handler blocking legitimate websocket connections")
-                    bugfix("Fix bad HTTP handler re-using incorrect single connections")
-                    bugfix("Fix bad HTTP blocking legitimate IPv6 literal addresses")
-                    bugfix("Fix slow DNS bogging down the rest of the proxy")
-                    bugfix("Fix some edge cases where idle timeouts were not applied")
+                    bugfix("Fix UDP_ASSOC delivering the wrong address to clients")
                   }
                 },
         )
