@@ -143,7 +143,13 @@ private constructor(
           }
 
           // Write here claims the msg
-          ctx.writeAndFlush(DatagramPacket(retainedData, destination))
+          ctx.writeAndFlush(DatagramPacket(retainedData, destination)).addListener { future ->
+            if (!future.isSuccess) {
+              Timber.e(future.cause()) {
+                "($channelId) Failed sending UDP to internet: $destination"
+              }
+            }
+          }
         },
     )
   }
@@ -266,7 +272,11 @@ private constructor(
     }
 
     // Write here claims the msg
-    ctx.writeAndFlush(DatagramPacket(response, backToClient))
+    ctx.writeAndFlush(DatagramPacket(response, backToClient)).addListener { future ->
+      if (!future.isSuccess) {
+        Timber.e(future.cause()) { "($channelId) Failed sending UDP back to client: $backToClient" }
+      }
+    }
   }
 
   private fun handleUdpMessage(ctx: ChannelHandlerContext, msg: DatagramPacket, channelId: String) {
