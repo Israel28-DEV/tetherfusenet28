@@ -36,9 +36,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelChildren
 import org.junit.Test
 
 class Http1HandlerTest {
+
+  // Assertions finish before the real outbound DNS and connect do, and the timeout waits for
+  // children
+  private fun runHttp1Test(block: suspend CoroutineScope.() -> Unit) = runBlockingWithDelays {
+    try {
+      block()
+    } finally {
+      coroutineContext.cancelChildren()
+    }
+  }
 
   @CheckResult
   private fun CoroutineScope.http1HandlerFactory(
@@ -132,7 +143,7 @@ class Http1HandlerTest {
   }
 
   @Test
-  fun `test HTTP1 handler receives connections`(): Unit = runBlockingWithDelays {
+  fun `test HTTP1 handler receives connections`(): Unit = runHttp1Test {
     withLogging {
       val tcpConnection = CompletableDeferred<Channel>()
       val context =
@@ -141,7 +152,7 @@ class Http1HandlerTest {
               isHttpEnabled = true,
               isSocksEnabled = false,
               onTcpChannelCreated = { tcpConnection.complete(it) },
-              factory = { this@runBlockingWithDelays.http1HandlerFactory(it) },
+              factory = { this@runHttp1Test.http1HandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )
@@ -180,7 +191,7 @@ class Http1HandlerTest {
   }
 
   @Test
-  fun `test HTTP1 handler fallback to Host header`(): Unit = runBlockingWithDelays {
+  fun `test HTTP1 handler fallback to Host header`(): Unit = runHttp1Test {
     withLogging {
       val tcpConnection = CompletableDeferred<Channel>()
       val context =
@@ -189,7 +200,7 @@ class Http1HandlerTest {
               isHttpEnabled = true,
               isSocksEnabled = false,
               onTcpChannelCreated = { tcpConnection.complete(it) },
-              factory = { this@runBlockingWithDelays.http1HandlerFactory(it) },
+              factory = { this@runHttp1Test.http1HandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )
@@ -223,7 +234,7 @@ class Http1HandlerTest {
   }
 
   @Test
-  fun `test HTTP1 forward resolves default port 80 with root path`(): Unit = runBlockingWithDelays {
+  fun `test HTTP1 forward resolves default port 80 with root path`(): Unit = runHttp1Test {
     assertForwardedTo(
         uri = "http://192.168.10.123/",
         expectedHost = "192.168.10.123",
@@ -233,18 +244,17 @@ class Http1HandlerTest {
   }
 
   @Test
-  fun `test HTTP1S forward resolves default port 443 with root path`(): Unit =
-      runBlockingWithDelays {
-        assertForwardedTo(
-            uri = "https://192.168.1.456",
-            expectedHost = "192.168.1.456",
-            expectedPort = 443,
-            expectedPath = "/",
-        )
-      }
+  fun `test HTTP1S forward resolves default port 443 with root path`(): Unit = runHttp1Test {
+    assertForwardedTo(
+        uri = "https://192.168.1.456",
+        expectedHost = "192.168.1.456",
+        expectedPort = 443,
+        expectedPath = "/",
+    )
+  }
 
   @Test
-  fun `test HTTP1 forward resolves default port 80 with sub path`(): Unit = runBlockingWithDelays {
+  fun `test HTTP1 forward resolves default port 80 with sub path`(): Unit = runHttp1Test {
     assertForwardedTo(
         uri = "http://192.168.4.567/hello",
         expectedHost = "192.168.4.567",
@@ -255,7 +265,7 @@ class Http1HandlerTest {
 
   @Test
   fun `test HTTP1 forward resolves explicit port with sub path, not a fallback default port`():
-      Unit = runBlockingWithDelays {
+      Unit = runHttp1Test {
     assertForwardedTo(
         uri = "http://192.168.1.321:8096/hello/config.json",
         expectedHost = "192.168.1.321",
@@ -266,7 +276,7 @@ class Http1HandlerTest {
 
   @Test
   fun `test HTTP1S forward resolves explicit port with sub path, not a fallback default port`():
-      Unit = runBlockingWithDelays {
+      Unit = runHttp1Test {
     assertForwardedTo(
         uri = "https://192.168.5.67:8123/this/here.json?query=string",
         expectedHost = "192.168.5.67",
