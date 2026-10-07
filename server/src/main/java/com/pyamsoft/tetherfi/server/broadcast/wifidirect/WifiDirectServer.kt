@@ -27,7 +27,6 @@ import com.pyamsoft.pydroid.core.LintIgnoreTooGenericExceptionCaught
 import com.pyamsoft.pydroid.core.LintIgnoreTooManyFunctions
 import com.pyamsoft.pydroid.core.ThreadEnforcer
 import com.pyamsoft.pydroid.util.AppDispatchers
-import com.pyamsoft.pydroid.util.ifNotCancellation
 import com.pyamsoft.tetherfi.core.LintIgnoreThrowsCount
 import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.ServerInternalApi
@@ -41,11 +40,13 @@ import javax.inject.Singleton
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 @Singleton
 internal class WifiDirectServer
@@ -365,14 +366,25 @@ internal constructor(
           Timber.d { "New Wi-Fi group connection created!" }
         }
       } catch (@LintIgnoreTooGenericExceptionCaught e: Throwable) {
-        e.ifNotCancellation {
+        // If the coroutine is dead we MAY still have a "in progress starting" Wi-Fi Direct
+        // connection.
+        // A group may already exist and nobody holds the channel to stop it later
+        if (e is CancellationException) {
+          val teardownResult =
+              withContext(context = NonCancellable) {
+                doFullWifiP2PTeardown(channel = channel, force = true)
+              }
+          if (!teardownResult.success) {
+            Timber.w { "Failed teardown after cancelled start. result=$teardownResult" }
+          }
+        } else {
           Timber.e(e) { "Failed to connect Wi-Fi direct group" }
-
-          // The channel was never returned to the caller, so close it here or it leaks.
-          closeSilent(channel)
-
-          throw e
         }
+
+        // The channel was never returned to the caller, so close it here or it leaks.
+        closeSilent(channel)
+
+        throw e
       }
 
       return@withLock channel
