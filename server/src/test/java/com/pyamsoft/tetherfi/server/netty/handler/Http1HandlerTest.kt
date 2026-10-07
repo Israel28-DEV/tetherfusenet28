@@ -89,7 +89,7 @@ class Http1HandlerTest {
               isHttpEnabled = true,
               isSocksEnabled = false,
               factory = {
-                http1HandlerFactory(
+                this@assertForwardedTo.http1HandlerFactory(
                     factory = it,
                     onConnectAttempt = { host, port ->
                       capturedHost = host
@@ -140,7 +140,7 @@ class Http1HandlerTest {
               isHttpEnabled = true,
               isSocksEnabled = false,
               onTcpChannelCreated = { tcpConnection = it },
-              factory = { http1HandlerFactory(it) },
+              factory = { this@runBlockingWithDelays.http1HandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )
@@ -188,7 +188,7 @@ class Http1HandlerTest {
               isHttpEnabled = true,
               isSocksEnabled = false,
               onTcpChannelCreated = { tcpConnection = it },
-              factory = { http1HandlerFactory(it) },
+              factory = { this@runBlockingWithDelays.http1HandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )

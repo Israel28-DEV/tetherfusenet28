@@ -102,7 +102,7 @@ class DelegatingHandlerTest {
           assertNotNull(read)
 
           val data = read.toString(Charsets.UTF_8)
-          assertEquals(data, httpCommand)
+          assertEquals(httpCommand, data)
 
           assertNull(channel.pipeline().get(Http1ProxyHandler::class.java))
           assertNull(channel.pipeline().get(Socks4ProxyHandler::class.java))
