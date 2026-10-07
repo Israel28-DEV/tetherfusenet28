@@ -62,7 +62,7 @@ internal constructor(
             iface.inetAddresses?.also { addresses ->
               for (address in addresses) {
                 if (address is Inet4Address && !address.isLoopbackAddress) {
-                  val hostName = address.hostName.orEmpty()
+                  val hostName = address.hostAddress.orEmpty()
                   hostNames.add(hostName)
                 }
               }

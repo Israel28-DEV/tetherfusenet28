@@ -27,7 +27,7 @@ private fun SocketAddress.inet(): InetSocketAddress? {
 }
 
 val SocketAddress.address: String
-  @CheckResult get() = this.inet()?.hostString.orEmpty()
+  @CheckResult get() = this.inet()?.address?.hostAddress.orEmpty()
 
 val SocketAddress.port: Int
   @CheckResult get() = this.inet()?.port ?: 0
