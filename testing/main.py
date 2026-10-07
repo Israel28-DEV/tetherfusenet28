@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from pprint import pprint
 import socket
 
-remote_host: str = "8.8.8.8"
+remote_host_ipv4: str = "1.1.1.1"
+remote_host_ipv6: str = "2606:4700:4700::1111"
 remote_port: int = 53
 
 @dataclass
@@ -345,6 +346,7 @@ def test_dns(
     transaction_id: int,
     domain_name: str,
     query_type: str,
+    ip_type: int
 ) -> int:
     dns_request = build_dns_request(transaction_id, domain_name, query_type)
 
@@ -354,6 +356,8 @@ def test_dns(
     # Fake responses
     normal_response = fake_normal_response
     # proxy_response = fake_proxy_response
+
+    remote_host = remote_host_ipv4 if ip_type == 4 else remote_host_ipv6
 
     if not normal_response:
         b = normal.request(
@@ -406,25 +410,28 @@ def main(args: list[str]) -> int:
     )
 
     for domain_name in args:
-        print(f"DNS: (A) {domain_name}")
-        test_dns(
-            normal,
-            proxy,
-            transaction_id, 
-            domain_name,
-            "A",
-        )
-        print("")
+        for ip_type in [4, 6]:
+            print(f"DNS: [IPv{ip_type}] (A) {domain_name}")
+            test_dns(
+                normal,
+                proxy,
+                transaction_id, 
+                domain_name,
+                "A",
+                ip_type,
+            )
+            print("")
 
-        print(f"DNS: (AAAA) {domain_name}")
-        test_dns(
-            normal,
-            proxy,
-            transaction_id,
-            domain_name, 
-            "AAAA",
-        )
-        print("")
+            print(f"DNS: [IPv{ip_type}] (AAAA) {domain_name}")
+            test_dns(
+                normal,
+                proxy,
+                transaction_id,
+                domain_name, 
+                "AAAA",
+                ip_type,
+            )
+            print("")
 
     return 0
 
