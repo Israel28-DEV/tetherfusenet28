@@ -26,14 +26,6 @@ private fun SocketAddress.inet(): InetSocketAddress? {
   return this.cast()
 }
 
-val SocketAddress.hostname: String
-  @CheckResult
-  get() {
-    val inet = this.inet()
-    val hostname = inet?.hostname ?: inet?.address?.hostName
-    return hostname.orEmpty()
-  }
-
 val SocketAddress.address: String
   @CheckResult get() = this.inet()?.hostString.orEmpty()
 
