@@ -109,6 +109,8 @@ private constructor(
       }
     }
 
+    getWritebackChannel(ctx)?.flushAndClose()
+
     ctx.channel().apply {
       attr(TAG).set(null)
       attr(WRITE_BACK_CHANNEL).set(null)
@@ -116,7 +118,6 @@ private constructor(
     }
 
     ctx.flushAndClose()
-    getWritebackChannel(ctx)?.flushAndClose()
   }
 
   override fun onChannelActive(ctx: ChannelHandlerContext) {
