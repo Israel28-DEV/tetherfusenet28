@@ -17,7 +17,9 @@
 package com.pyamsoft.tetherfi.server.proxy.session.netty.handler.channel
 
 import androidx.annotation.CheckResult
+import com.pyamsoft.pydroid.core.LintIgnoreTooGenericExceptionCaught
 import com.pyamsoft.pydroid.util.AppDispatchers
+import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.resolveDnsAddress
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.Channel
@@ -70,40 +72,53 @@ internal constructor(
     return bootstrapChannel.newPromise().also { promise ->
       registerFuture.addListener {
         if (!registerFuture.isSuccess) {
-          promise.setFailure(registerFuture.cause())
+          promise.tryFailure(registerFuture.cause())
           bootstrapChannel.close()
           return@addListener
         }
 
         // Branch off to IO
-        scope.launch(context = dispatchers.io) {
-          // Resolve in the IO branch (blocking)
-          val resolved =
-              bootstrapChannel.resolveDnsAddress(
-                  dispatchers = dispatchers,
-                  hostName = hostName,
-                  port = port,
-              )
+        scope
+            .launch(context = dispatchers.io) {
+              // Resolve in the IO branch (blocking)
+              val resolved =
+                  bootstrapChannel.resolveDnsAddress(
+                      dispatchers = dispatchers,
+                      hostName = hostName,
+                      port = port,
+                  )
 
-          // Hop back onto the channel's event loop before touching the channel
-          val eventLoop = bootstrapChannel.eventLoop()
-          eventLoop.execute {
-            if (resolved == null) {
-              promise.setFailure(UnknownHostException(hostName))
-              bootstrapChannel.close()
-              return@execute
-            }
+              // Hop back onto the channel's event loop before touching the channel
+              val eventLoop = bootstrapChannel.eventLoop()
+              try {
+                eventLoop.execute {
+                  if (resolved == null) {
+                    promise.tryFailure(UnknownHostException(hostName))
+                    bootstrapChannel.close()
+                    return@execute
+                  }
 
-            bootstrapChannel.connect(resolved).addListener { connectFuture ->
-              if (connectFuture.isSuccess) {
-                promise.setSuccess()
-              } else {
-                promise.setFailure(connectFuture.cause())
+                  bootstrapChannel.connect(resolved).addListener { connectFuture ->
+                    if (connectFuture.isSuccess) {
+                      promise.trySuccess()
+                    } else {
+                      promise.tryFailure(connectFuture.cause())
+                      bootstrapChannel.close()
+                    }
+                  }
+                }
+              } catch (@LintIgnoreTooGenericExceptionCaught e: Throwable) {
+                Timber.e(e) { "Error during eventLoop execution submission" }
+                promise.tryFailure(e)
                 bootstrapChannel.close()
               }
             }
-          }
-        }
+            .invokeOnCompletion { throwable ->
+              if (throwable != null) {
+                promise.tryFailure(throwable)
+                bootstrapChannel.close()
+              }
+            }
       }
     }
   }
