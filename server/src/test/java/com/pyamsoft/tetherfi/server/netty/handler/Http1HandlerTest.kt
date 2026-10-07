@@ -34,6 +34,7 @@ import io.netty.handler.codec.http.HttpMethod
 import io.netty.handler.codec.http.HttpVersion
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import org.junit.Test
 
@@ -133,13 +134,13 @@ class Http1HandlerTest {
   @Test
   fun `test HTTP1 handler receives connections`(): Unit = runBlockingWithDelays {
     withLogging {
-      var tcpConnection: Channel? = null
+      val tcpConnection = CompletableDeferred<Channel>()
       val context =
           TestSetup.withHandler(
               scope = this,
               isHttpEnabled = true,
               isSocksEnabled = false,
-              onTcpChannelCreated = { tcpConnection = it },
+              onTcpChannelCreated = { tcpConnection.complete(it) },
               factory = { this@runBlockingWithDelays.http1HandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
@@ -174,20 +175,20 @@ class Http1HandlerTest {
       }
 
       // A TCP outbound has been created
-      assertNotNull(tcpConnection)
+      assertNotNull(tcpConnection.await())
     }
   }
 
   @Test
   fun `test HTTP1 handler fallback to Host header`(): Unit = runBlockingWithDelays {
     withLogging {
-      var tcpConnection: Channel? = null
+      val tcpConnection = CompletableDeferred<Channel>()
       val context =
           TestSetup.withHandler(
               scope = this,
               isHttpEnabled = true,
               isSocksEnabled = false,
-              onTcpChannelCreated = { tcpConnection = it },
+              onTcpChannelCreated = { tcpConnection.complete(it) },
               factory = { this@runBlockingWithDelays.http1HandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
@@ -217,7 +218,7 @@ class Http1HandlerTest {
       }
 
       // A TCP outbound has been created
-      assertNotNull(tcpConnection)
+      assertNotNull(tcpConnection.await())
     }
   }
 
