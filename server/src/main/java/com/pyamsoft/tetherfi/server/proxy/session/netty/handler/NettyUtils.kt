@@ -19,6 +19,7 @@ package com.pyamsoft.tetherfi.server.proxy.session.netty.handler
 import androidx.annotation.CheckResult
 import com.pyamsoft.pydroid.core.LintIgnoreTooGenericExceptionCaught
 import com.pyamsoft.pydroid.util.AppDispatchers
+import com.pyamsoft.pydroid.util.ifNotCancellation
 import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.ServerSocketTimeout
 import com.pyamsoft.tetherfi.server.clients.TetherClient
@@ -135,8 +136,10 @@ private suspend fun resolveDnsAddress(
         val resolver = DefaultAddressResolverGroup.INSTANCE.getResolver(executor)
         return@withContext resolver.resolve(destination).get()
       } catch (@LintIgnoreTooGenericExceptionCaught e: Throwable) {
-        Timber.e(e) { "Failed to resolve address for connect: $hostName:$port" }
-        return@withContext null
+        e.ifNotCancellation {
+          Timber.e(e) { "Failed to resolve address for connect: $hostName:$port" }
+          return@withContext null
+        }
       }
     }
 

@@ -19,6 +19,7 @@ package com.pyamsoft.tetherfi.server.proxy.session.netty.handler.channel
 import androidx.annotation.CheckResult
 import com.pyamsoft.pydroid.core.LintIgnoreTooGenericExceptionCaught
 import com.pyamsoft.pydroid.util.AppDispatchers
+import com.pyamsoft.pydroid.util.ifNotCancellation
 import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.resolveDnsAddress
 import io.netty.bootstrap.Bootstrap
@@ -115,6 +116,9 @@ internal constructor(
             }
             .invokeOnCompletion { throwable ->
               if (throwable != null) {
+                throwable.ifNotCancellation {
+                  Timber.e(throwable) { "Error during channel creation" }
+                }
                 promise.tryFailure(throwable)
                 bootstrapChannel.close()
               }

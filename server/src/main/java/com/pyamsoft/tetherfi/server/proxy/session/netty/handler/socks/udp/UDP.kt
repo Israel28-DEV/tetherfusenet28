@@ -20,6 +20,7 @@ import androidx.annotation.CheckResult
 import com.pyamsoft.pydroid.core.LintIgnoreLongMethod
 import com.pyamsoft.pydroid.core.LintIgnoreTooGenericExceptionCaught
 import com.pyamsoft.pydroid.util.AppDispatchers
+import com.pyamsoft.pydroid.util.ifNotCancellation
 import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.resolveDnsAddress
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks.FRAGMENT_ZERO
@@ -219,24 +220,36 @@ object UDP {
     }
 
     // Branch off to IO
-    scope.launch(context = dispatchers.io) {
-      // Resolve in the IO branch (blocking)
-      val resolved =
-          ctx.resolveDnsAddress(
-              dispatchers = dispatchers,
-              hostName = destinationAddr,
-              port = destinationPort,
-          )
+    scope
+        .launch(context = dispatchers.io) {
+          // Resolve in the IO branch (blocking)
+          val resolved =
+              ctx.resolveDnsAddress(
+                  dispatchers = dispatchers,
+                  hostName = destinationAddr,
+                  port = destinationPort,
+              )
 
-      // Hop back onto the channel's event loop before touching the channel
-      ctx.executor().execute {
-        if (resolved == null) {
-          onError(retainedData)
-        } else {
-          handleUdpUnwrapped(resolved)
+          // Hop back onto the channel's event loop before touching the channel
+          try {
+            ctx.executor().execute {
+              if (resolved == null) {
+                onError(retainedData)
+              } else {
+                handleUdpUnwrapped(resolved)
+              }
+            }
+          } catch (@LintIgnoreTooGenericExceptionCaught e: Throwable) {
+            Timber.e(e) { "(${channelId}) Unable to return to event loop" }
+            ReferenceCountUtil.release(retainedData)
+          }
         }
-      }
-    }
+        .invokeOnCompletion { throwable ->
+          if (throwable != null) {
+            throwable.ifNotCancellation { Timber.e(throwable) { "Error during UDP unwrapping" } }
+            ReferenceCountUtil.release(retainedData)
+          }
+        }
   }
 
   @CheckResult
