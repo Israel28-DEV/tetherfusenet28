@@ -149,6 +149,13 @@ internal constructor(
       return
     }
 
+    val serverAddress = serverChannel.localAddress().cast<InetSocketAddress>()
+    if (serverAddress == null) {
+      Timber.w { "($channelId) DROP: $tag server local==null" }
+      sendFailureAndClose(ctx, msg)
+      return
+    }
+
     val client = getTetherClient(ctx)
     if (client == null) {
       Timber.w { "($channelId) DROP: $tag TetherClient is NULL" }
@@ -230,16 +237,17 @@ internal constructor(
       pipeline.dropHandler(this::class)
 
       // Tell proxy we've established connection so that NOW we can relay
-      val type = resolveSocks5AddressType(relayControlAddress)
+      // The relay listens on all interfaces, so give the client the address it reached us on
+      val type = resolveSocks5AddressType(serverAddress)
       Timber.d {
-        "(${channelId}) $tag Inform client of UDP $type ${relayControl.address}:${relayControl.port}"
+        "(${channelId}) $tag Inform client of UDP $type ${serverAddress.hostString}:${relayControlAddress.port}"
       }
       ctx.writeAndFlush(
           DefaultSocks5CommandResponse(
               Socks5CommandStatus.SUCCESS,
               type,
-              relayControl.address,
-              relayControl.port,
+              serverAddress.hostString,
+              relayControlAddress.port,
           )
       )
     }
