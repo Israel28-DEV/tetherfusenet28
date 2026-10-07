@@ -52,6 +52,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 
 @ConsistentCopyVisibility
@@ -196,6 +197,7 @@ internal object TestSetup {
     val socketTagger = SocketTagger {}
 
     val workerGroup = MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
+    scope.coroutineContext.job.invokeOnCompletion { workerGroup.shutdownGracefully() }
 
     val tcpSocketCreator =
         TcpChannelCreator(
