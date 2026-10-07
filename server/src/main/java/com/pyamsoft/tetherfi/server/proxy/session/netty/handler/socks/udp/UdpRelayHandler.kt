@@ -109,6 +109,12 @@ private constructor(
         msg = msg,
         onError = { sendErrorAndClose(ctx, it) },
         onUnwrapped = { retainedData, destination ->
+          if (isBlockedLocalAddress(destination.address)) {
+            Timber.w { "($channelId) DROP: Blocked local address: $destination" }
+            sendErrorAndClose(ctx, retainedData)
+            return@unwrap
+          }
+
           val tag = "UDP-RELAY-${destination.address}:${destination.port}"
 
           // Replace the channel ID here now that we have evaluated the real upstream

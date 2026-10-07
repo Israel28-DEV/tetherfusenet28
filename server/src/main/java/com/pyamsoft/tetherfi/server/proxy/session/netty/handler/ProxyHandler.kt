@@ -230,7 +230,13 @@ internal constructor(
       // NON-BLOCKING :)
       val address = InetAddress.getByAddress(bytes)
 
-      // No loopback, no wildcard (ipv6)
+      return isBlockedLocalAddress(address)
+    }
+
+    /** No loopback, no wildcard */
+    @JvmStatic
+    @CheckResult
+    protected fun isBlockedLocalAddress(address: InetAddress): Boolean {
       return address.isLoopbackAddress || address.isAnyLocalAddress
     }
 
