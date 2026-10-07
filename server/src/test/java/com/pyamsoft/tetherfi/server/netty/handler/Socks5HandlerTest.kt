@@ -22,12 +22,16 @@ import com.pyamsoft.tetherfi.server.netty.TestSetup
 import com.pyamsoft.tetherfi.server.netty.withLogging
 import com.pyamsoft.tetherfi.server.proxy.session.address
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks.Socks5ProxyHandler
+import com.pyamsoft.tetherfi.server.proxy.session.port
 import com.pyamsoft.tetherfi.server.runBlockingWithDelays
 import io.netty.channel.Channel
 import io.netty.channel.ChannelInboundHandler
 import io.netty.handler.codec.socksx.v5.DefaultSocks5CommandRequest
 import io.netty.handler.codec.socksx.v5.Socks5AddressType
+import io.netty.handler.codec.socksx.v5.Socks5CommandResponse
+import io.netty.handler.codec.socksx.v5.Socks5CommandStatus
 import io.netty.handler.codec.socksx.v5.Socks5CommandType
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CompletableDeferred
@@ -100,4 +104,59 @@ class Socks5HandlerTest {
       assertNotNull(tcpConnection.await())
     }
   }
+
+  @Test
+  fun `test SOCKS5 UDP associate replies with the address the client reached`(): Unit =
+      runBlockingWithDelays {
+        withLogging {
+          val udpRelay = CompletableDeferred<Channel>()
+          val context =
+              TestSetup.withHandler(
+                  scope = this,
+                  isHttpEnabled = false,
+                  isSocksEnabled = true,
+                  onUdpChannelCreated = { udpRelay.complete(it) },
+                  factory = { this@runBlockingWithDelays.socks5HandlerFactory(it) },
+                  dispatchers = AppDispatchers.create(),
+              )
+
+          val channel = context.channel
+          Socks5ProxyHandler.applyChannelAttributes(
+              channel = channel,
+              client = context.resolver.ensure(channel.remoteAddress().address),
+          )
+
+          val req =
+              DefaultSocks5CommandRequest(
+                  Socks5CommandType.UDP_ASSOCIATE,
+                  Socks5AddressType.IPv4,
+                  "0.0.0.0",
+                  0,
+              )
+
+          channel.apply {
+            writeInbound(req)
+            flushInbound()
+            runPendingTasks()
+            checkException()
+          }
+
+          var response: Socks5CommandResponse? = null
+          while (response == null) {
+            delay(10.milliseconds)
+            channel.runPendingTasks()
+            response = channel.readOutbound()
+          }
+
+          val relay = udpRelay.await()
+          try {
+            assertEquals(Socks5CommandStatus.SUCCESS, response.status())
+            assertEquals(Socks5AddressType.IPv4, response.bndAddrType())
+            assertEquals("127.0.0.1", response.bndAddr())
+            assertEquals(relay.localAddress().port, response.bndPort())
+          } finally {
+            relay.close().sync()
+          }
+        }
+      }
 }

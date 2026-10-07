@@ -354,9 +354,13 @@ internal object TestSetup {
         assertFalse(nettyJob.isActive)
 
         assertEquals(openCount.get(), 1)
+
+        // Close events take a little bit of time
+        while (closingCount.get() <= 0) {
+          delay(100.milliseconds)
+        }
         assertEquals(closingCount.get(), 1)
 
-        // Full close event takes a little bit of time
         while (closedCount.get() <= 0) {
           delay(100.milliseconds)
         }
