@@ -18,6 +18,7 @@ package com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks
 
 import androidx.annotation.CheckResult
 import com.pyamsoft.pydroid.core.LintIgnoreLongMethod
+import com.pyamsoft.pydroid.core.LintIgnoreTooGenericExceptionCaught
 import com.pyamsoft.pydroid.core.cast
 import com.pyamsoft.pydroid.util.AppDispatchers
 import com.pyamsoft.tetherfi.core.Timber
@@ -31,6 +32,7 @@ import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.applyBandwidthLi
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.channel.ChannelCreator
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.dropHandler
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.flushAndClose
+import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.runInEventLoop
 import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelPipeline
@@ -40,6 +42,7 @@ import io.netty.handler.codec.socksx.v5.Socks5CommandRequest
 import io.netty.handler.logging.LogLevel
 import io.netty.handler.logging.LoggingHandler
 import io.netty.util.ReferenceCountUtil
+import io.netty.util.concurrent.Future
 import java.net.InetSocketAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -187,35 +190,73 @@ internal constructor(
     ReferenceCountUtil.release(msg)
 
     connectSocket.addListener { future ->
-      if (!future.isSuccess) {
-        Timber.e(future.cause()) { "$tag proxied outbound failed" }
-        sendFailureAndClose(ctx, retained)
-        return@addListener
+      // The outbound channel is open, move back to the receive side context and adjust the
+      // pipeline.
+      ctx.executor().runInEventLoop {
+        try {
+          handleSocksConnectRelay(
+              ctx = ctx,
+              channelId = channelId,
+              tag = tag,
+              future = future,
+              dstAddr = dstAddr,
+              dstPort = dstPort,
+              retained = retained,
+              outbound = outbound,
+              serverChannel = serverChannel,
+              client = client,
+          )
+        } catch (@LintIgnoreTooGenericExceptionCaught e: Throwable) {
+          Timber.e(e) { "(${channelId}) Unable to execute SOCKS connect relay" }
+
+          // Just release, the ctx is dead
+          ReferenceCountUtil.release(retained)
+          outbound.flushAndClose()
+        }
       }
-
-      RelayHandler.applyChannelAttributes(
-          channel = serverChannel,
-          writeBackChannel = outbound,
-          tag = "$tag-OUTBOUND-${dstAddr}:${dstPort}",
-          direction = RelayHandler.Direction.OUTBOUND,
-          client = client,
-      )
-
-      // Tell proxy we've established connection
-      // This will consume the retained message
-      publishConnectSuccess(ctx, tag, channelId, retained, outbound)
-
-      // Drop down to raw TCP
-      val pipeline = ctx.pipeline()
-
-      dropSocksHandlers(pipeline)
-
-      // Remove our own handler
-      pipeline.dropHandler(this::class)
-
-      // Add a relay for the internet outbound
-      pipeline.addLast(relayHandlerFactory.create(Unit))
     }
+  }
+
+  private fun handleSocksConnectRelay(
+      ctx: ChannelHandlerContext,
+      channelId: String,
+      tag: String,
+      future: Future<in Void>,
+      dstAddr: String,
+      dstPort: Int,
+      retained: T,
+      outbound: Channel,
+      serverChannel: Channel,
+      client: TetherClient,
+  ) {
+    if (!future.isSuccess) {
+      Timber.e(future.cause()) { "$tag proxied outbound failed" }
+      sendFailureAndClose(ctx, retained)
+      return
+    }
+
+    RelayHandler.applyChannelAttributes(
+        channel = serverChannel,
+        writeBackChannel = outbound,
+        tag = "$tag-OUTBOUND-${dstAddr}:${dstPort}",
+        direction = RelayHandler.Direction.OUTBOUND,
+        client = client,
+    )
+
+    // Tell proxy we've established connection
+    // This will consume the retained message
+    publishConnectSuccess(ctx, tag, channelId, retained, outbound)
+
+    // Drop down to raw TCP
+    val pipeline = ctx.pipeline()
+
+    dropSocksHandlers(pipeline)
+
+    // Remove our own handler
+    pipeline.dropHandler(this::class)
+
+    // Add a relay for the internet outbound
+    pipeline.addLast(relayHandlerFactory.create(Unit))
   }
 
   @CheckResult protected abstract fun isConnectMessageType(msg: T): Boolean

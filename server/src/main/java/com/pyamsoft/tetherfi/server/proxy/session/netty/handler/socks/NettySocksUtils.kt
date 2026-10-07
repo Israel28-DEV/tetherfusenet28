@@ -23,8 +23,13 @@ import java.net.InetSocketAddress
 private const val ADDR_SIZE_IPV4 = 4
 
 @CheckResult
-internal fun resolveSocks5AddressType(localAddr: InetSocketAddress): Socks5AddressType {
-  return if (localAddr.address.address.size == ADDR_SIZE_IPV4) {
+internal fun isIPv4Address(addr: InetSocketAddress): Boolean {
+  return addr.address.address.size == ADDR_SIZE_IPV4
+}
+
+@CheckResult
+internal fun resolveSocks5AddressType(addr: InetSocketAddress): Socks5AddressType {
+  return if (isIPv4Address(addr)) {
     Socks5AddressType.IPv4
   } else {
     Socks5AddressType.IPv6

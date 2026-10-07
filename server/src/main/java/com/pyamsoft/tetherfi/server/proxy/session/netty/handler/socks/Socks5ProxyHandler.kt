@@ -20,6 +20,7 @@ package com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks
 
 import androidx.annotation.CheckResult
 import com.pyamsoft.pydroid.core.LintIgnoreLongMethod
+import com.pyamsoft.pydroid.core.LintIgnoreTooGenericExceptionCaught
 import com.pyamsoft.pydroid.core.LintIgnoreTooManyFunctions
 import com.pyamsoft.pydroid.core.cast
 import com.pyamsoft.pydroid.util.AppDispatchers
@@ -35,6 +36,7 @@ import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.applyBandwidthLi
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.channel.ChannelCreator
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.dropHandler
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.flushAndClose
+import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.runInEventLoop
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks.udp.UdpRelayHandler
 import com.pyamsoft.tetherfi.server.proxy.session.port
 import io.netty.channel.Channel
@@ -54,7 +56,9 @@ import io.netty.handler.codec.socksx.v5.Socks5Message
 import io.netty.handler.logging.LogLevel
 import io.netty.handler.logging.LoggingHandler
 import io.netty.util.ReferenceCountUtil
+import io.netty.util.concurrent.Future
 import java.net.InetSocketAddress
+import java.net.SocketAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -209,53 +213,87 @@ internal constructor(
     ReferenceCountUtil.release(msg)
 
     udpControl.addListener { future ->
-      if (!future.isSuccess) {
-        Timber.e(future.cause()) { "($channelId) DROP $tag proxied outbound failed" }
-        sendFailureAndClose(ctx, retained)
-        return@addListener
-      }
-
-      val relayControl = udpRelay.localAddress()
-      if (relayControl == null) {
-        Timber.w { "($channelId) DROP $tag proxied outbound remote==null" }
-        sendFailureAndClose(ctx, retained)
-        return@addListener
-      }
-
-      val relayControlAddress = relayControl.cast<InetSocketAddress>()
-      if (relayControlAddress == null) {
-        Timber.w { "($channelId) DROP $tag proxied outbound remote is not InetSocketAddress" }
-        sendFailureAndClose(ctx, retained)
-        return@addListener
-      }
-
-      // Release the message now that we are in the listener
-      ReferenceCountUtil.release(retained)
-
-      // Drop down to raw TCP
-      val pipeline = ctx.pipeline()
-
-      dropSocksHandlers(pipeline)
-
-      // Remove our own handler
-      pipeline.dropHandler(this::class)
-
-      // Tell proxy we've established connection so that NOW we can relay
-      // The relay listens on all interfaces, so give the client the address it reached us on
-      val type = resolveSocks5AddressType(serverAddress)
-      val bindAddr = boundAddress.address
-      Timber.d {
-        "(${channelId}) $tag Inform client of UDP $type ${bindAddr}:${relayControlAddress.port}"
-      }
-      ctx.writeAndFlush(
-          DefaultSocks5CommandResponse(
-              Socks5CommandStatus.SUCCESS,
-              type,
-              bindAddr,
-              relayControlAddress.port,
+      // The outbound channel is open, move back to the receive side context and adjust the
+      // pipeline.
+      try {
+        ctx.executor().runInEventLoop {
+          handleSocks5UDPAssocRelay(
+              ctx = ctx,
+              channelId = channelId,
+              tag = tag,
+              future = future,
+              serverAddress = serverAddress,
+              boundAddress = boundAddress,
+              udpRelay = udpRelay,
+              retained = retained,
           )
-      )
+        }
+      } catch (@LintIgnoreTooGenericExceptionCaught e: Throwable) {
+        Timber.e(e) { "(${channelId}) Unable to execute SOCKS UDP_ASSOC relay" }
+
+        // Just release, the ctx is dead
+        ReferenceCountUtil.release(retained)
+        udpRelay.flushAndClose()
+      }
     }
+  }
+
+  private fun handleSocks5UDPAssocRelay(
+      ctx: ChannelHandlerContext,
+      channelId: String,
+      tag: String,
+      future: Future<in Void>,
+      serverAddress: InetSocketAddress,
+      boundAddress: SocketAddress,
+      udpRelay: Channel,
+      retained: Socks5CommandRequest,
+  ) {
+    if (!future.isSuccess) {
+      Timber.e(future.cause()) { "($channelId) DROP $tag proxied outbound failed" }
+      sendFailureAndClose(ctx, retained)
+      return
+    }
+
+    val relayControl = udpRelay.localAddress()
+    if (relayControl == null) {
+      Timber.w { "($channelId) DROP $tag proxied outbound remote==null" }
+      sendFailureAndClose(ctx, retained)
+      return
+    }
+
+    val relayControlAddress = relayControl.cast<InetSocketAddress>()
+    if (relayControlAddress == null) {
+      Timber.w { "($channelId) DROP $tag proxied outbound remote is not InetSocketAddress" }
+      sendFailureAndClose(ctx, retained)
+      return
+    }
+
+    // Release the message now that we are in the listener
+    ReferenceCountUtil.release(retained)
+
+    // Drop down to raw TCP
+    val pipeline = ctx.pipeline()
+
+    dropSocksHandlers(pipeline)
+
+    // Remove our own handler
+    pipeline.dropHandler(this::class)
+
+    // Tell proxy we've established connection so that NOW we can relay
+    // The relay listens on all interfaces, so give the client the address it reached us on
+    val type = resolveSocks5AddressType(serverAddress)
+    val bindAddr = boundAddress.address
+    Timber.d {
+      "(${channelId}) $tag Inform client of UDP $type ${bindAddr}:${relayControlAddress.port}"
+    }
+    ctx.writeAndFlush(
+        DefaultSocks5CommandResponse(
+            Socks5CommandStatus.SUCCESS,
+            type,
+            bindAddr,
+            relayControlAddress.port,
+        )
+    )
   }
 
   private fun handleSocks5CommandRequest(

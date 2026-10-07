@@ -17,6 +17,7 @@
 package com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks
 
 import androidx.annotation.CheckResult
+import com.pyamsoft.pydroid.core.cast
 import com.pyamsoft.pydroid.util.AppDispatchers
 import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.ServerSocketTimeout
@@ -39,6 +40,7 @@ import io.netty.handler.codec.socksx.v4.Socks4CommandType
 import io.netty.handler.codec.socksx.v4.Socks4Message
 import io.netty.handler.codec.socksx.v4.Socks4ServerDecoder
 import io.netty.util.ReferenceCountUtil
+import java.net.InetSocketAddress
 import kotlinx.coroutines.CoroutineScope
 
 internal class Socks4ProxyHandler
@@ -108,6 +110,20 @@ internal constructor(
     val remote = outbound.localAddress()
     if (remote == null) {
       Timber.w { "(${channelId}) DROP $tag outbound remote==null" }
+      sendFailureAndClose(ctx, msg)
+      return
+    }
+
+    val remoteAddr = remote.cast<InetSocketAddress>()
+    if (remoteAddr == null) {
+      Timber.w { "($channelId) DROP $tag outbound remote is not InetSocketAddress" }
+      sendFailureAndClose(ctx, msg)
+      return
+    }
+
+    // Address MUST be IPv4
+    if (!isIPv4Address(remoteAddr)) {
+      Timber.w { "($channelId) DROP $tag outbound remote.address is not IPv4" }
       sendFailureAndClose(ctx, msg)
       return
     }

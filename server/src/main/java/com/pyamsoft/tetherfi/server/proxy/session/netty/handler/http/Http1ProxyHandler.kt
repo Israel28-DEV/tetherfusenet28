@@ -335,8 +335,11 @@ private constructor(
         }
       } catch (@LintIgnoreTooGenericExceptionCaught e: Throwable) {
         Timber.e(e) { "(${channelId}) Unable to execute HTTPS connect relay" }
+        // Just release, the ctx is dead
         ReferenceCountUtil.release(retained)
+
         releaseQueuedMessages()
+        outbound.flushAndClose()
       }
     }
   }
@@ -539,8 +542,8 @@ private constructor(
         Timber.e(e) { "(${channelId}) Unable to execute HTTP fwd relay" }
         ReferenceCountUtil.release(retained)
         releaseQueuedMessages()
+        outbound.flushAndClose()
       }
-      ctx.executor().runInEventLoop {}
     }
   }
 
