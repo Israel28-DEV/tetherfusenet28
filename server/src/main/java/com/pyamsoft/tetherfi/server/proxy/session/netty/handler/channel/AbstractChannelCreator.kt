@@ -22,6 +22,7 @@ import com.pyamsoft.pydroid.util.AppDispatchers
 import com.pyamsoft.pydroid.util.ifNotCancellation
 import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.resolveDnsAddress
+import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.runInEventLoop
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFactory
@@ -92,11 +93,11 @@ internal constructor(
               // Hop back onto the channel's event loop before touching the channel
               val eventLoop = bootstrapChannel.eventLoop()
               try {
-                eventLoop.execute {
+                eventLoop.runInEventLoop {
                   if (resolved == null) {
                     promise.tryFailure(UnknownHostException(hostName))
                     bootstrapChannel.close()
-                    return@execute
+                    return@runInEventLoop
                   }
 
                   bootstrapChannel.connect(resolved).addListener { connectFuture ->

@@ -170,3 +170,16 @@ internal suspend fun Channel.resolveDnsAddress(
       port = port,
   )
 }
+
+/**
+ * Ensure we are running directly on an event loop
+ *
+ * Can not be inline since "execute" is Java
+ */
+internal fun EventExecutor.runInEventLoop(block: () -> Unit) {
+  if (inEventLoop()) {
+    block()
+  } else {
+    execute(block)
+  }
+}

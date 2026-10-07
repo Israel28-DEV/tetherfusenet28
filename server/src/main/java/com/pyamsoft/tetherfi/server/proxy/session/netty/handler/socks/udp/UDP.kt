@@ -23,6 +23,7 @@ import com.pyamsoft.pydroid.util.AppDispatchers
 import com.pyamsoft.pydroid.util.ifNotCancellation
 import com.pyamsoft.tetherfi.core.Timber
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.resolveDnsAddress
+import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.runInEventLoop
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks.FRAGMENT_ZERO
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks.FRAGMENT_ZERO_INT
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.socks.RESERVED_BYTE
@@ -232,7 +233,7 @@ object UDP {
 
           // Hop back onto the channel's event loop before touching the channel
           try {
-            ctx.executor().execute {
+            ctx.executor().runInEventLoop {
               if (resolved == null) {
                 onError(retainedData)
               } else {
