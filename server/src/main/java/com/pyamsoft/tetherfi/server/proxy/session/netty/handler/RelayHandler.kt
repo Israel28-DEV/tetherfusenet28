@@ -203,7 +203,13 @@ private constructor(
     bytesMoved.addAndGet(amountMoved)
 
     // Write here claims the msg
-    writeToChannel.writeAndFlush(bytes)
+    writeToChannel
+        .writeAndFlush(bytes)
+        .closeOnFailure(
+            ctx = ctx,
+            channelId = channelId,
+            tag = "RELAY",
+        )
   }
 
   override fun channelWritabilityChanged(ctx: ChannelHandlerContext) {

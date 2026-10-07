@@ -36,6 +36,7 @@ import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.ProxyHandler
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.RelayHandler
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.applyBandwidthLimitFor
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.channel.ChannelCreator
+import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.closeOnFailure
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.dropHandler
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.flushAndClose
 import com.pyamsoft.tetherfi.server.proxy.session.netty.handler.runInEventLoop
@@ -111,14 +112,24 @@ private constructor(
     outboundChannel?.config()?.isAutoRead = isAutoRead
   }
 
-  private fun queueOrDeliverOutboundMessage(ctx: ChannelHandlerContext, msg: HttpContent) {
+  private fun queueOrDeliverOutboundMessage(
+      ctx: ChannelHandlerContext,
+      msg: HttpContent,
+      channelId: String,
+  ) {
     val outbound = outboundChannel
 
     if (outbound == null) {
       messageQueue.add(msg)
     } else {
       // Use immediately and release
-      outbound.writeAndFlush(msg)
+      outbound
+          .writeAndFlush(msg)
+          .closeOnFailure(
+              ctx = ctx,
+              channelId = channelId,
+              tag = "HTTP-CONTENT",
+          )
 
       if (msg is LastHttpContent) {
         finishForwardedRequest(ctx, outbound)
@@ -133,7 +144,11 @@ private constructor(
     messageQueue.clear()
   }
 
-  private fun replayQueuedMessages(ctx: ChannelHandlerContext, channel: Channel) {
+  private fun replayQueuedMessages(
+      ctx: ChannelHandlerContext,
+      channel: Channel,
+      channelId: String,
+  ) {
     if (messageQueue.isEmpty()) {
       return
     }
@@ -144,7 +159,13 @@ private constructor(
     var isRequestComplete = false
     for (q in queued) {
       // Write here claims the original msg
-      channel.write(q)
+      channel
+          .write(q)
+          .closeOnFailure(
+              ctx = ctx,
+              channelId = channelId,
+              tag = "HTTP-FORWARD",
+          )
 
       if (q is LastHttpContent) {
         isRequestComplete = true
@@ -613,7 +634,13 @@ private constructor(
 
     // Success: writeAndFlush transfers ownership of retained to Netty.
     // Netty releases retained after encoding — do NOT release again.
-    outbound.writeAndFlush(retained)
+    outbound
+        .writeAndFlush(retained)
+        .closeOnFailure(
+            ctx = ctx,
+            channelId = channelId,
+            tag = tag,
+        )
 
     // Hold onto this channel so the rest of the request body goes straight to it
     assignOutboundChannel(outbound)
@@ -626,7 +653,7 @@ private constructor(
       finishForwardedRequest(ctx, outbound)
     } else {
       // Replay any body content that arrived BEFORE we were set up
-      replayQueuedMessages(ctx, outbound)
+      replayQueuedMessages(ctx, outbound, channelId)
     }
 
     serverChannel.config().isAutoRead = true
@@ -683,7 +710,7 @@ private constructor(
       is HttpContent -> {
         // Message queued for later, no release needed
         // or is immediately written and claimed by netty, no release needed
-        queueOrDeliverOutboundMessage(ctx, msg)
+        queueOrDeliverOutboundMessage(ctx, msg, channelId)
       }
 
       else -> {
