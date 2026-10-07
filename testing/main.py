@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pprint import pprint
 import socket
 
-remote_host: str = "dns.google"
+remote_host: str = "8.8.8.8"
 remote_port: int = 53
 
 @dataclass
