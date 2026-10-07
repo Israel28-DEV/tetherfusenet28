@@ -76,7 +76,7 @@ class DelegatingHandlerTest {
                   scope = this,
                   isHttpEnabled = false,
                   isSocksEnabled = false,
-                  factory = { delegatingHandlerFactory(it) },
+                  factory = { this@runBlockingWithDelays.delegatingHandlerFactory(it) },
                   // TODO(Peter): Do we need test dispatchers?
                   dispatchers = AppDispatchers.create(),
               )
@@ -118,7 +118,7 @@ class DelegatingHandlerTest {
               scope = this,
               isHttpEnabled = true,
               isSocksEnabled = false,
-              factory = { delegatingHandlerFactory(it) },
+              factory = { this@runBlockingWithDelays.delegatingHandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )
@@ -151,7 +151,7 @@ class DelegatingHandlerTest {
               scope = this,
               isHttpEnabled = false,
               isSocksEnabled = true,
-              factory = { delegatingHandlerFactory(it) },
+              factory = { this@runBlockingWithDelays.delegatingHandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )
@@ -183,7 +183,7 @@ class DelegatingHandlerTest {
               scope = this,
               isHttpEnabled = false,
               isSocksEnabled = true,
-              factory = { delegatingHandlerFactory(it) },
+              factory = { this@runBlockingWithDelays.delegatingHandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )
