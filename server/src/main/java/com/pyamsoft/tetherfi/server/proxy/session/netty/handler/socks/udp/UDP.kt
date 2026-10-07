@@ -52,6 +52,9 @@ object UDP {
   // 2 port bytes
   private const val LEADING_HEADER_YOLO_AMOUNT = 11
 
+  // 2 reserve bytes, 1 fragment byte, 1 address type byte
+  private const val FIXED_HEADER_BYTES = 4
+
   @CheckResult
   private fun readAddress(
       channelId: String,
@@ -146,6 +149,12 @@ object UDP {
       return
     }
 
+    if (buf.readableBytes() < FIXED_HEADER_BYTES) {
+      Timber.w { "(${channelId}) DROP: Packet too short for header: ${buf.readableBytes()}" }
+      onError(msg)
+      return
+    }
+
     val reservedByteOne = buf.readByte()
     if (reservedByteOne != RESERVED_BYTE) {
       Timber.w { "(${channelId}) DROP: Expected reserve byte one, but got data: $reservedByteOne" }
@@ -170,17 +179,22 @@ object UDP {
     val addressTypeByte = buf.readByte()
     val addrType = Socks5AddressType.valueOf(addressTypeByte)
     val destinationAddr = readAddress(channelId, buf, addrType)
-
-    // A short max is 32767 but ports can go up to 65k
-    // Sometimes the short value is negative, in that case, we
-    // "fix" it by converting back to an unsigned number
-    val destinationPort = buf.readUnsignedShort()
-
     if (destinationAddr.isBlank()) {
       Timber.w { "(${channelId}) DROP: Invalid upstream destination address: $destinationAddr" }
       onError(msg)
       return
     }
+
+    if (buf.readableBytes() < Short.SIZE_BYTES) {
+      Timber.w { "(${channelId}) DROP: Packet too short for port: ${buf.readableBytes()}" }
+      onError(msg)
+      return
+    }
+
+    // A short max is 32767 but ports can go up to 65k
+    // Sometimes the short value is negative, in that case, we
+    // "fix" it by converting back to an unsigned number
+    val destinationPort = buf.readUnsignedShort()
 
     if (destinationPort !in VALID_PORT_RANGE) {
       Timber.w { "(${channelId}) DROP: Invalid upstream destination port: $destinationPort" }
