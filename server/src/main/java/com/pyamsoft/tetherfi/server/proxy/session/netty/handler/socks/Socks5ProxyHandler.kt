@@ -149,7 +149,8 @@ internal constructor(
       return
     }
 
-    val serverAddress = serverChannel.localAddress().cast<InetSocketAddress>()
+    val boundAddress = serverChannel.localAddress()
+    val serverAddress = boundAddress.cast<InetSocketAddress>()
     if (serverAddress == null) {
       Timber.w { "($channelId) DROP: $tag server local==null" }
       sendFailureAndClose(ctx, msg)
@@ -172,6 +173,9 @@ internal constructor(
 
     scope.launch(context = dispatchers.io) { allowedClients.seen(client) }
 
+    // We MUST listen on all addresses since we share a send-receive socket
+    // Do NOT attempt to later change this `bind` call to take the hostName since it will break
+    // everything :)
     Timber.d { "(${channelId}) $tag Register UDP for TCP control $tcpControlAddress" }
     val udpControl = udpSocketCreator.bind { ch ->
       val pipeline = ch.pipeline()
@@ -239,14 +243,15 @@ internal constructor(
       // Tell proxy we've established connection so that NOW we can relay
       // The relay listens on all interfaces, so give the client the address it reached us on
       val type = resolveSocks5AddressType(serverAddress)
+      val bindAddr = boundAddress.address
       Timber.d {
-        "(${channelId}) $tag Inform client of UDP $type ${serverAddress.hostString}:${relayControlAddress.port}"
+        "(${channelId}) $tag Inform client of UDP $type ${bindAddr}:${relayControlAddress.port}"
       }
       ctx.writeAndFlush(
           DefaultSocks5CommandResponse(
               Socks5CommandStatus.SUCCESS,
               type,
-              serverAddress.hostString,
+              bindAddr,
               relayControlAddress.port,
           )
       )
