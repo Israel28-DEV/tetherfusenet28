@@ -30,6 +30,7 @@ import io.netty.handler.codec.socksx.v5.Socks5AddressType
 import io.netty.handler.codec.socksx.v5.Socks5CommandType
 import kotlin.test.assertNotNull
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import org.junit.Test
@@ -58,14 +59,14 @@ class Socks5HandlerTest {
   @Test
   fun `test SOCKS5 Handler receives connections`(): Unit = runBlockingWithDelays {
     withLogging {
-      var tcpConnection: Channel? = null
+      val tcpConnection = CompletableDeferred<Channel>()
       val context =
           TestSetup.withHandler(
               scope = this,
               isHttpEnabled = true,
               isSocksEnabled = false,
-              onTcpChannelCreated = { tcpConnection = it },
-              factory = { socks5HandlerFactory(it) },
+              onTcpChannelCreated = { tcpConnection.complete(it) },
+              factory = { this@runBlockingWithDelays.socks5HandlerFactory(it) },
               // TODO(Peter): Do we need test dispatchers?
               dispatchers = AppDispatchers.create(),
           )
@@ -96,7 +97,7 @@ class Socks5HandlerTest {
       delay(100.milliseconds)
 
       // A TCP outbound has been created
-      assertNotNull(tcpConnection)
+      assertNotNull(tcpConnection.await())
     }
   }
 }

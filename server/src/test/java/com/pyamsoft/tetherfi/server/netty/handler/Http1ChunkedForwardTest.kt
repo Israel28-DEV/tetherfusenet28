@@ -17,7 +17,6 @@
 package com.pyamsoft.tetherfi.server.netty.handler
 
 import androidx.annotation.CheckResult
-import com.pyamsoft.pydroid.core.requireNotNull
 import com.pyamsoft.pydroid.util.AppDispatchers
 import com.pyamsoft.tetherfi.server.netty.TestSetup
 import com.pyamsoft.tetherfi.server.netty.withLogging
@@ -36,6 +35,7 @@ import io.netty.handler.codec.http.HttpRequestDecoder
 import io.netty.handler.codec.http.HttpServerCodec
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -45,12 +45,12 @@ class Http1ChunkedForwardTest {
 
   private data class Proxy(
       val server: EmbeddedChannel,
-      val outbound: () -> EmbeddedChannel,
+      val outbound: CompletableDeferred<EmbeddedChannel>,
   )
 
   @CheckResult
   private fun createProxy(scope: CoroutineScope): Proxy {
-    var outbound: EmbeddedChannel? = null
+    val outbound = CompletableDeferred<EmbeddedChannel>()
     val creator =
         object : ChannelCreator {
           override fun bind(onChannelInitialized: (Channel) -> Unit): ChannelFuture {
@@ -64,7 +64,7 @@ class Http1ChunkedForwardTest {
           ): ChannelFuture {
             val ch = EmbeddedChannel()
             onChannelInitialized(ch)
-            outbound = ch
+            outbound.complete(ch)
             return ch.newSucceededFuture()
           }
         }
@@ -99,7 +99,7 @@ class Http1ChunkedForwardTest {
 
     return Proxy(
         server = server,
-        outbound = { outbound.requireNotNull() },
+        outbound = outbound,
     )
   }
 
@@ -139,7 +139,7 @@ class Http1ChunkedForwardTest {
     }
   }
 
-  private fun withProxy(block: (Proxy) -> Unit) = runBlockingWithDelays {
+  private fun withProxy(block: suspend (Proxy) -> Unit) = runBlockingWithDelays {
     withLogging {
       val scope = CoroutineScope(SupervisorJob())
       try {
@@ -148,7 +148,7 @@ class Http1ChunkedForwardTest {
           block(proxy)
         } finally {
           proxy.server.finishAndReleaseAll()
-          proxy.outbound().finishAndReleaseAll()
+          proxy.outbound.await().finishAndReleaseAll()
         }
       } finally {
         scope.cancel()
@@ -176,7 +176,8 @@ class Http1ChunkedForwardTest {
     )
     proxy.server.send(listOf("6", " world", "0", "").rawNetwork())
 
-    val req = decodeRequest(proxy.outbound().drainOutbound())
+    val outbound = proxy.outbound.await()
+    val req = decodeRequest(outbound.drainOutbound())
     try {
       assertEquals("/upload", req.uri())
       assertEquals("hello world", req.content().toString(Charsets.US_ASCII))
@@ -187,7 +188,7 @@ class Http1ChunkedForwardTest {
     // Once the request is complete, both codecs are gone and bytes are relayed raw
     assertNull(proxy.server.pipeline().get(HttpServerCodec::class.java))
     proxy.server.send("raw content after pipeline")
-    val raw = proxy.outbound().drainOutbound()
+    val raw = outbound.drainOutbound()
     try {
       assertEquals("raw content after pipeline", raw.toString(Charsets.US_ASCII))
     } finally {
@@ -209,7 +210,8 @@ class Http1ChunkedForwardTest {
                 .rawNetwork()
         )
         val early = listOf("HTTP/1.1 100 Continue", "").rawNetwork()
-        proxy.outbound().send(early)
+        val outbound = proxy.outbound.await()
+        outbound.send(early)
 
         val relayed = proxy.server.drainOutbound()
         try {
@@ -220,7 +222,7 @@ class Http1ChunkedForwardTest {
 
         proxy.server.send(listOf("5", "hello", "6", " world", "0", "").rawNetwork())
 
-        val req = decodeRequest(proxy.outbound().drainOutbound())
+        val req = decodeRequest(outbound.drainOutbound())
         try {
           assertEquals("hello world", req.content().toString(Charsets.US_ASCII))
         } finally {
