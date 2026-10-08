@@ -16,10 +16,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # The runner already has the Android SDK; just accept licenses so
-      # Gradle can download any missing platform/build-tools itself.
       - name: Accept Android licenses
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Apply no-proxy experiment and rename
+        run: |
+          git apply no-proxy.patch
+          sed -i 's|<string name="app_name">TetherFuseNet</string>|<string name="app_name">WiFi Share</string>|' app/src/main/res/values/strings.xml
 
       - uses: gradle/actions/setup-gradle@v4
 
