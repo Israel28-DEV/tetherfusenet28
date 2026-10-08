@@ -1,0 +1,22 @@
+diff --git a/server/src/main/java/com/pyamsoft/tetherfi/server/proxy/WifiSharedProxy.kt b/server/src/main/java/com/pyamsoft/tetherfi/server/proxy/WifiSharedProxy.kt
+index fd8888f..ceda379 100644
+--- a/server/src/main/java/com/pyamsoft/tetherfi/server/proxy/WifiSharedProxy.kt
++++ b/server/src/main/java/com/pyamsoft/tetherfi/server/proxy/WifiSharedProxy.kt
+@@ -169,15 +169,8 @@ internal constructor(
+           RunningStatus.ProxyError(RuntimeException("Must enable either HTTP or SOCKS server"))
+       )
+     } else {
+-      scope.launch(context = dispatchers.default) {
+-        beginProxyLoop(
+-            type = SharedProxy.Type.NETTY,
+-            lock = lock,
+-            info = info,
+-            isHttpEnabled = isHttpEnabled,
+-            isSocksEnabled = isSocksEnabled,
+-        )
+-      }
++      // EXPERIMENT: proxy server disabled. Wi-Fi group runs, nothing forwards traffic.
++      readyState(SharedProxy.Type.NETTY)
+     }
+   }
+ 
